@@ -104,14 +104,21 @@ const getAllAvailableWallets = () => {
  * Connect to wallet
  */
 const connectToWallet = async (provider) => {
-    console.log('[WALLET] Attempting to connect...');
-    
     try {
-        // Try to connect
-        if (provider.isConnected) {
-            console.log('[WALLET] Already connected');
-            return provider.publicKey;
+        if (!provider.isConnected) {
+            await provider.connect();
         }
+        // Oprava: Niektoré peňaženky vracajú objekt, iné nie. 
+        // Vždy berieme kľúč priamo z providera.
+        if (!provider.publicKey) {
+            throw new Error('Nepodarilo sa získať adresu peňaženky.');
+        }
+        return provider.publicKey;
+    } catch (error) {
+        console.error('Chyba pripojenia:', error);
+        throw error;
+    }
+};
         
         // Request connection
         const response = await provider.connect();
